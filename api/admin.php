@@ -122,6 +122,23 @@ if ($action === 'get_location_config') {
     ]);
 }
 
+if ($action === 'get_original_access_config') {
+    json_response(200, [
+        'ok' => true,
+        'originalAccessConfig' => get_original_access_settings(),
+    ]);
+}
+
+if ($action === 'set_original_access_config') {
+    $enabled = isset($payload['enabled']) ? (bool) $payload['enabled'] : true;
+
+    if (!save_original_access_settings(['enabled' => $enabled])) {
+        json_response(500, ['ok' => false, 'error' => '元画像公開設定の保存に失敗しました。']);
+    }
+
+    json_response(200, ['ok' => true, 'originalAccessConfig' => get_original_access_settings()]);
+}
+
 if ($action === 'set_location_config') {
     $enabled = isset($payload['enabled']) ? (bool) $payload['enabled'] : false;
     $lat = isset($payload['lat']) ? (float) $payload['lat'] : 0.0;

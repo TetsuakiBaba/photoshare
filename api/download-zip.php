@@ -11,6 +11,10 @@ if (!is_array($payload) || !isset($payload['names']) || !is_array($payload['name
     json_response(400, ['ok' => false, 'error' => 'ダウンロード対象の画像が指定されていません。']);
 }
 
+if (!original_image_access_enabled()) {
+    json_response(403, ['ok' => false, 'error' => '現在は確認期間中のため、元画像のダウンロードは無効です。']);
+}
+
 $maxFiles = max(1, config_int('DOWNLOAD_ZIP_MAX_FILES', 200));
 $maxBytes = max(1, config_int('DOWNLOAD_ZIP_MAX_BYTES', 500 * 1024 * 1024));
 $uploadDir = upload_dir();

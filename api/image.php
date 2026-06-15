@@ -17,6 +17,10 @@ $variant = (string) (isset($_GET['variant']) ? $_GET['variant'] : 'original');
 $path = upload_dir() . '/' . $name;
 if ($variant === 'thumbnail') {
     if (!ensure_thumbnail_for($name)) {
+        if (!original_image_access_enabled()) {
+            http_response_code(404);
+            exit;
+        }
         $variant = 'original';
     } else {
         $path = thumbnail_path($name);
@@ -25,6 +29,11 @@ if ($variant === 'thumbnail') {
 
 if ($variant !== 'original' && $variant !== 'thumbnail') {
     http_response_code(404);
+    exit;
+}
+
+if ($variant === 'original' && !original_image_access_enabled()) {
+    http_response_code(403);
     exit;
 }
 

@@ -3,6 +3,7 @@ const sortSelect = document.querySelector("#sort-select");
 const statusEl = document.querySelector("#gallery-status");
 const sentinel = document.querySelector("#gallery-sentinel");
 const galleryShell = grid.closest(".gallery-shell");
+const originalAccessNotice = document.querySelector("#original-access-notice");
 const clearSelectionButton = document.querySelector("#clear-selection-button");
 const downloadSelectedButton = document.querySelector("#download-selected-button");
 const zipProgressDialog = document.querySelector("#zip-progress-dialog");
@@ -33,6 +34,7 @@ let currentSort = sortSelect.value;
 let pollTimer = null;
 let pollIntervalMs = DEFAULT_POLL_INTERVAL_MS;
 let downloadZipMaxFiles = 200;
+let originalImageAccessEnabled = true;
 let slideshowPhotos = [];
 let slideshowIndex = 0;
 let slideshowAutoTimer = null;
@@ -73,18 +75,62 @@ const formatPhotoDate = (photo) => {
   return `${label}: ${dateFormatter.format(new Date(dateValue))}`;
 };
 
-const photoDownloadUrl = (photo) => photo.originalUrl || photo.url || photo.thumbnailUrl;
+const photoDisplayUrl = (photo) => photo.originalUrl || photo.url || photo.thumbnailUrl;
+const photoDownloadUrl = (photo) => photo.originalAvailable === false ? "" : (photo.originalUrl || photo.url || "");
 
 const getOrderedLoadedPhotos = () =>
   Array.from(grid.querySelectorAll(".photo-item"))
     .map((item) => photoStore.get(item.dataset.id))
     .filter(Boolean);
 
+const updateOriginalAccessControls = () => {
+  galleryShell.classList.toggle("is-thumbnail-only", !originalImageAccessEnabled);
+  if (originalAccessNotice) {
+    originalAccessNotice.hidden = originalImageAccessEnabled;
+  }
+  clearSelectionButton.hidden = !originalImageAccessEnabled;
+  downloadSelectedButton.hidden = !originalImageAccessEnabled;
+  slideshowButton.hidden = false;
+  slideshowButton.disabled = !originalImageAccessEnabled;
+
+  if (!originalImageAccessEnabled) {
+    selectedPhotoIds.clear();
+    if (slideshowDialog.open) closeSlideshow();
+    if (lightbox.dialog.open) closePhotoLightbox();
+  }
+
+  grid.querySelectorAll(".photo-select-control").forEach((control) => {
+    control.hidden = !originalImageAccessEnabled;
+    const input = control.querySelector("input");
+    if (input) {
+      input.disabled = !originalImageAccessEnabled;
+      if (!originalImageAccessEnabled) input.checked = false;
+    }
+  });
+
+  grid.querySelectorAll(".photo-zoom-button").forEach((button) => {
+    button.disabled = false;
+    button.setAttribute(
+      "aria-label",
+      originalImageAccessEnabled
+        ? button.dataset.originalAriaLabel || button.getAttribute("aria-label") || "写真を拡大表示"
+        : button.dataset.originalAriaLabel || button.getAttribute("aria-label") || "写真を拡大表示",
+    );
+  });
+
+  syncVisibleSelectionControls();
+  updateDownloadSelectedButton();
+  updateSelectionLimitControls();
+};
+
 const updateDownloadSelectedButton = () => {
   const count = selectedPhotoIds.size;
   clearSelectionButton.disabled = count === 0;
-  downloadSelectedButton.disabled = count === 0;
+  downloadSelectedButton.disabled = count === 0 || !originalImageAccessEnabled;
   downloadSelectedButton.querySelector("span").textContent =
+    !originalImageAccessEnabled
+      ? "確認期間中はダウンロード無効"
+      :
     count === 0
       ? "選択画像をまとめてダウンロード"
       : `選択画像をまとめてダウンロード（${count}/${downloadZipMaxFiles}枚）`;
@@ -123,7 +169,10 @@ const clearSelectedPhotos = () => {
 
 const downloadPhoto = (photo) => {
   const url = photoDownloadUrl(photo);
-  if (!url) return;
+  if (!url) {
+    setStatus("現在は確認期間中のため、元画像のダウンロードは無効です。");
+    return;
+  }
 
   const link = document.createElement("a");
   link.href = url;
@@ -223,6 +272,12 @@ const responseBlobWithProgress = async (response, onProgress) => {
 };
 
 const downloadSelectedPhotos = async () => {
+  if (!originalImageAccessEnabled) {
+    setStatus("現在は確認期間中のため、元画像のダウンロードは無効です。");
+    updateDownloadSelectedButton();
+    return;
+  }
+
   const photos = Array.from(selectedPhotoIds)
     .map((id) => photoStore.get(id))
     .filter(Boolean);
@@ -384,7 +439,7 @@ let lightboxCurrentPhotoId = null;
 
 const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
-const slideshowPhotoUrl = photoDownloadUrl;
+const slideshowPhotoUrl = photoDisplayUrl;
 
 const setSlideshowStatus = (message) => {
   if (message) {
@@ -553,10 +608,26 @@ const renderPhotoLightbox = (photo) => {
   const currentIndex = orderedPhotos.findIndex((item) => item.id === photo.id);
 
   lightboxCurrentPhotoId = photo.id;
-  lightbox.image.src = photoDownloadUrl(photo);
+  lightbox.image.src = photoDisplayUrl(photo);
   lightbox.image.alt = photo.name;
   lightbox.caption.textContent = `${formatPhotoDate(photo)}${currentIndex >= 0 ? ` / ${currentIndex + 1}枚目` : ""}`;
-  lightbox.downloadButton.disabled = !photoDownloadUrl(photo);
+  const downloadUrl = photoDownloadUrl(photo);
+  lightbox.downloadButton.disabled = !downloadUrl;
+  lightbox.downloadButton.classList.toggle("is-low-resolution", !downloadUrl);
+  lightbox.downloadButton.setAttribute(
+    "aria-label",
+    downloadUrl ? "この写真をダウンロード" : "現在低解像度表示中",
+  );
+  lightbox.downloadButton.innerHTML = downloadUrl
+    ? `
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 3v12" />
+        <path d="m7 10 5 5 5-5" />
+        <path d="M5 21h14" />
+      </svg>
+      <span>ダウンロード</span>
+    `
+    : "<span>現在低解像度表示中</span>";
   lightbox.prevButton.disabled = orderedPhotos.length <= 1;
   lightbox.nextButton.disabled = orderedPhotos.length <= 1;
 };
@@ -872,7 +943,7 @@ const authenticateViewMode = async () => {
   }
 };
 
-const createAdminToolbar = (locationConfig = null) => {
+const createAdminToolbar = (locationConfig = null, originalAccessConfig = null) => {
   if (!isAdminMode || !isAdminAuthenticated || !galleryShell) return;
 
   const toolbar = document.createElement("section");
@@ -950,6 +1021,68 @@ const createAdminToolbar = (locationConfig = null) => {
   const thumbnailDebugPanel = createThumbnailDebugPanel();
 
   toolbar.append(label, adminStatusEl, thumbnailDebugButton, deleteAllButton, exitButton, thumbnailDebugPanel);
+
+  const originalConfig = originalAccessConfig || { enabled: true };
+
+  const originalAccessSection = document.createElement("div");
+  originalAccessSection.className = "admin-location-settings";
+
+  const originalAccessHeading = document.createElement("strong");
+  originalAccessHeading.className = "admin-location-heading";
+  originalAccessHeading.textContent = "元画像公開設定";
+
+  const originalAccessToggleRow = document.createElement("label");
+  originalAccessToggleRow.className = "admin-location-toggle";
+  const originalAccessToggle = document.createElement("input");
+  originalAccessToggle.type = "checkbox";
+  originalAccessToggle.checked = originalConfig.enabled;
+  originalAccessToggleRow.append(originalAccessToggle, " 元画像表示とダウンロードを有効にする");
+
+  const originalAccessNote = document.createElement("p");
+  originalAccessNote.className = "admin-location-note";
+  originalAccessNote.textContent = "OFFにすると、通常ページではサムネイルのみを表示し、元画像表示・個別ダウンロード・一括ZIPダウンロードを無効にします。";
+
+  const originalAccessStatus = document.createElement("span");
+  originalAccessStatus.className = "admin-location-status";
+
+  const originalAccessActions = document.createElement("div");
+  originalAccessActions.className = "admin-location-actions";
+
+  const saveOriginalAccessButton = document.createElement("button");
+  saveOriginalAccessButton.type = "button";
+  saveOriginalAccessButton.className = "secondary-button";
+  saveOriginalAccessButton.textContent = "保存";
+  saveOriginalAccessButton.addEventListener("click", async () => {
+    saveOriginalAccessButton.disabled = true;
+    originalAccessStatus.textContent = "保存しています...";
+    try {
+      const result = await adminRequest({
+        action: "set_original_access_config",
+        enabled: originalAccessToggle.checked,
+      });
+      originalImageAccessEnabled = Boolean(result.originalAccessConfig && result.originalAccessConfig.enabled);
+      originalAccessToggle.checked = originalImageAccessEnabled;
+      updateOriginalAccessControls();
+      originalAccessStatus.textContent = originalImageAccessEnabled
+        ? "元画像表示とダウンロードを有効にしました。"
+        : "確認期間用にサムネイルのみの公開へ切り替えました。";
+      resetGallery();
+    } catch (error) {
+      originalAccessStatus.textContent = error.message;
+    } finally {
+      saveOriginalAccessButton.disabled = false;
+    }
+  });
+
+  originalAccessActions.append(saveOriginalAccessButton);
+  originalAccessSection.append(
+    originalAccessHeading,
+    originalAccessToggleRow,
+    originalAccessNote,
+    originalAccessActions,
+    originalAccessStatus,
+  );
+  toolbar.append(originalAccessSection);
 
   // Location restriction settings panel
   const config = locationConfig || { enabled: false, lat: 0, lng: 0, radiusMeters: 1000 };
@@ -1160,7 +1293,7 @@ const createPhotoItem = (photo, { isNew = false } = {}) => {
   loader.setAttribute("aria-hidden", "true");
 
   const image = document.createElement("img");
-  image.src = photo.thumbnailUrl || photo.url;
+  image.src = photo.thumbnailUrl || photoDisplayUrl(photo);
   image.alt = photo.name;
   image.loading = "lazy";
   image.decoding = "async";
@@ -1173,19 +1306,25 @@ const createPhotoItem = (photo, { isNew = false } = {}) => {
 
   frame.append(loader, image);
 
-  const zoomButton = document.createElement("button");
-  zoomButton.className = "photo-zoom-button";
-  zoomButton.type = "button";
-  zoomButton.setAttribute("aria-label", `${photo.name}を拡大表示`);
-  zoomButton.addEventListener("click", () => {
+  const canSelect = originalImageAccessEnabled && photo.originalAvailable !== false;
+  const photoSurface = document.createElement("button");
+  photoSurface.className = "photo-zoom-button";
+  photoSurface.type = "button";
+  photoSurface.dataset.originalAriaLabel = `${photo.name}を拡大表示`;
+  photoSurface.setAttribute("aria-label", photoSurface.dataset.originalAriaLabel);
+  photoSurface.addEventListener("click", () => {
     openPhotoLightbox(photo);
   });
-  zoomButton.append(frame);
+  photoSurface.append(frame);
 
   const caption = document.createElement("figcaption");
   caption.textContent = formatPhotoDate(photo);
 
-  item.append(zoomButton, selectionLabel);
+  item.append(photoSurface);
+
+  if (canSelect) {
+    item.append(selectionLabel);
+  }
 
   if (isAdminMode && isAdminAuthenticated) {
     const deleteButton = document.createElement("button");
@@ -1236,6 +1375,11 @@ const fetchPhotos = async ({ sort = currentSort, pageOffset = offset, limit = PA
 
   if (!response.ok || !result.ok) {
     throw new Error(result.error || "写真一覧を読み込めませんでした。");
+  }
+
+  if (typeof result.originalAccessEnabled === "boolean") {
+    originalImageAccessEnabled = result.originalAccessEnabled;
+    updateOriginalAccessControls();
   }
 
   const nextPollIntervalMs = Number(result.pollIntervalMs) || DEFAULT_POLL_INTERVAL_MS;
@@ -1293,7 +1437,7 @@ const closeSlideshow = () => {
 };
 
 const openSlideshow = async () => {
-  if (!isGalleryActive || slideshowButton.disabled) return;
+  if (!isGalleryActive || slideshowButton.disabled || !originalImageAccessEnabled) return;
 
   lastSlideshowFocus = document.activeElement instanceof HTMLElement ? document.activeElement : slideshowButton;
   slideshowButton.disabled = true;
@@ -1539,6 +1683,8 @@ lightbox.closeButton.addEventListener("click", () => {
 });
 
 lightbox.downloadButton.addEventListener("click", () => {
+  if (lightbox.downloadButton.disabled) return;
+
   const photo = photoStore.get(lightboxCurrentPhotoId);
   if (photo) {
     downloadPhoto(photo);
@@ -1603,10 +1749,16 @@ const initializeGallery = async () => {
   if (!(await authenticateViewMode())) return;
 
   let locationConfig = null;
+  let originalAccessConfig = null;
   try {
     const settings = await fetchGallerySettings();
     locationConfig = settings.locationConfig || null;
+    originalAccessConfig = settings.originalAccessConfig || null;
+    if (originalAccessConfig && typeof originalAccessConfig.enabled === "boolean") {
+      originalImageAccessEnabled = originalAccessConfig.enabled;
+    }
     downloadZipMaxFiles = Math.max(1, Number(settings.downloadZipMaxFiles) || downloadZipMaxFiles);
+    updateOriginalAccessControls();
   } catch (_error) {
     // 設定取得失敗時は位置制限なしで続行
   }
@@ -1617,7 +1769,7 @@ const initializeGallery = async () => {
   }
 
   isGalleryActive = true;
-  createAdminToolbar(locationConfig);
+  createAdminToolbar(locationConfig, originalAccessConfig);
   resetGallery();
   schedulePolling();
 };

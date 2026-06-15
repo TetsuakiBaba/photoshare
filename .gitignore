@@ -1,5 +1,7 @@
 api/config.local.php
+api/admin_settings.json
 api/location-settings.json
+api/original-access-settings.json
 /config.php
 uploads/*
 !uploads/.gitkeep
@@ -8,3 +10,5 @@ uploads/*
 node_modules/
 .DS_Store
 upload*.txt
+assets/images/logo.svg
+assets/images/ogp.png

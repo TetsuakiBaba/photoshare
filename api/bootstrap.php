@@ -141,6 +141,10 @@ function app_public_config()
         'usageNotesSections' => app_usage_notes_sections(),
         'slideshowEyebrow' => config_string('APP_SLIDESHOW_EYEBROW', 'Slideshow'),
         'slideshowTitle' => config_string('APP_SLIDESHOW_TITLE', '写真ギャラリー'),
+        'footerText' => config_string('APP_FOOTER_TEXT', 'Powered by Photo Sharing'),
+        'footerLinkText' => config_string('APP_FOOTER_LINK_TEXT', 'ia-tmu/photoshare'),
+        'footerLinkUrl' => config_string('APP_FOOTER_LINK_URL', 'https://github.com/ia-tmu/photoshare'),
+        'footerLicenseText' => config_string('APP_FOOTER_LICENSE_TEXT', 'MIT License'),
     ];
 }
 
@@ -685,30 +689,50 @@ function format_iso_time($timestamp)
     return date('c', $timestamp);
 }
 
-function location_settings_path()
+function admin_settings_path()
 {
-    return __DIR__ . '/location-settings.json';
+    return __DIR__ . '/admin_settings.json';
 }
 
-function get_location_settings()
+function read_admin_settings_file()
 {
-    $defaults = [
+    $path = admin_settings_path();
+    if (!is_file($path)) {
+        return [];
+    }
+
+    $data = json_decode((string) @file_get_contents($path), true);
+    return is_array($data) ? $data : [];
+}
+
+function save_admin_settings_file(array $settings)
+{
+    return @file_put_contents(admin_settings_path(), json_encode($settings, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)) !== false;
+}
+
+function legacy_json_settings($filename)
+{
+    $path = __DIR__ . '/' . $filename;
+    if (!is_file($path)) {
+        return [];
+    }
+
+    $data = json_decode((string) @file_get_contents($path), true);
+    return is_array($data) ? $data : [];
+}
+
+function default_location_settings()
+{
+    return [
         'enabled' => (bool) config_value('LOCATION_RESTRICT_ENABLED', false),
         'lat' => (float) config_value('LOCATION_LAT', 0.0),
         'lng' => (float) config_value('LOCATION_LNG', 0.0),
         'radiusMeters' => max(1, config_int('LOCATION_RADIUS_METERS', 1000)),
     ];
+}
 
-    $path = location_settings_path();
-    if (!is_file($path)) {
-        return $defaults;
-    }
-
-    $data = json_decode((string) @file_get_contents($path), true);
-    if (!is_array($data)) {
-        return $defaults;
-    }
-
+function normalize_location_settings(array $data, array $defaults)
+{
     return [
         'enabled' => array_key_exists('enabled', $data) ? (bool) $data['enabled'] : $defaults['enabled'],
         'lat' => array_key_exists('lat', $data) ? (float) $data['lat'] : $defaults['lat'],
@@ -717,26 +741,72 @@ function get_location_settings()
     ];
 }
 
-function save_location_settings(array $settings)
+function get_location_settings()
 {
-    $path = location_settings_path();
-    $data = [
-        'enabled' => (bool) $settings['enabled'],
-        'lat' => (float) $settings['lat'],
-        'lng' => (float) $settings['lng'],
-        'radiusMeters' => max(1, (int) $settings['radiusMeters']),
-    ];
+    $defaults = default_location_settings();
+    $adminSettings = read_admin_settings_file();
+    $data = isset($adminSettings['location']) && is_array($adminSettings['location'])
+        ? $adminSettings['location']
+        : legacy_json_settings('location-settings.json');
 
-    return @file_put_contents($path, json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)) !== false;
+    return normalize_location_settings($data, $defaults);
 }
 
-function photo_entries()
+function save_location_settings(array $settings)
+{
+    $adminSettings = read_admin_settings_file();
+    $adminSettings['location'] = normalize_location_settings($settings, default_location_settings());
+
+    return save_admin_settings_file($adminSettings);
+}
+
+function default_original_access_settings()
+{
+    return [
+        'enabled' => (bool) config_value('ORIGINAL_IMAGE_ACCESS_ENABLED', true),
+    ];
+}
+
+function normalize_original_access_settings(array $data, array $defaults)
+{
+    return [
+        'enabled' => array_key_exists('enabled', $data) ? (bool) $data['enabled'] : $defaults['enabled'],
+    ];
+}
+
+function get_original_access_settings()
+{
+    $defaults = default_original_access_settings();
+    $adminSettings = read_admin_settings_file();
+    $data = isset($adminSettings['originalAccess']) && is_array($adminSettings['originalAccess'])
+        ? $adminSettings['originalAccess']
+        : legacy_json_settings('original-access-settings.json');
+
+    return normalize_original_access_settings($data, $defaults);
+}
+
+function save_original_access_settings(array $settings)
+{
+    $adminSettings = read_admin_settings_file();
+    $adminSettings['originalAccess'] = normalize_original_access_settings($settings, default_original_access_settings());
+
+    return save_admin_settings_file($adminSettings);
+}
+
+function original_image_access_enabled()
+{
+    $settings = get_original_access_settings();
+    return (bool) $settings['enabled'];
+}
+
+function photo_entries($includeOriginal = null)
 {
     $uploadDir = upload_dir();
     if (!is_dir($uploadDir)) {
         return [];
     }
 
+    $includeOriginal = $includeOriginal === null ? original_image_access_enabled() : (bool) $includeOriginal;
     $entries = [];
     foreach (new DirectoryIterator($uploadDir) as $entry) {
         if (!$entry->isFile()) {
@@ -759,9 +829,10 @@ function photo_entries()
         $entries[] = [
             'id' => $name,
             'name' => $name,
-            'url' => 'api/image.php?name=' . rawurlencode($name) . '&variant=original',
-            'originalUrl' => 'api/image.php?name=' . rawurlencode($name) . '&variant=original',
+            'url' => 'api/image.php?name=' . rawurlencode($name) . '&variant=' . ($includeOriginal ? 'original' : 'thumbnail'),
+            'originalUrl' => $includeOriginal ? 'api/image.php?name=' . rawurlencode($name) . '&variant=original' : null,
             'thumbnailUrl' => 'api/image.php?name=' . rawurlencode($name) . '&variant=thumbnail',
+            'originalAvailable' => $includeOriginal,
             'uploadedAt' => format_iso_time($timestamp),
             'timestamp' => $timestamp,
             'capturedAt' => $capturedAt,

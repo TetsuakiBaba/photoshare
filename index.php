@@ -3,6 +3,8 @@ require __DIR__ . '/api/bootstrap.php';
 
 $appConfig = app_public_config();
 $usageNotesSections = is_array($appConfig['usageNotesSections']) ? $appConfig['usageNotesSections'] : [];
+$originalAccessConfig = get_original_access_settings();
+$originalAccessEnabled = (bool) $originalAccessConfig['enabled'];
 ?>
 <!doctype html>
 <html lang="ja">
@@ -78,14 +80,17 @@ $usageNotesSections = is_array($appConfig['usageNotesSections']) ? $appConfig['u
       </button>
     </section>
 
-    <section id="gallery-section" class="gallery-shell">
+    <section id="gallery-section" class="gallery-shell<?= $originalAccessEnabled ? '' : ' is-thumbnail-only' ?>">
       <header class="gallery-header">
         <div>
           <p class="eyebrow"><?= html_escape($appConfig['galleryEyebrow']) ?></p>
+          <p id="original-access-notice" class="original-access-notice"<?= $originalAccessEnabled ? ' hidden' : '' ?>>
+            現在確認期間中のため高解像度データは閲覧できません
+          </p>
         </div>
 
         <div class="gallery-actions">
-          <button id="clear-selection-button" class="clear-selection-button" type="button" disabled>
+          <button id="clear-selection-button" class="clear-selection-button" type="button" disabled<?= $originalAccessEnabled ? '' : ' hidden' ?>>
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M18 6 6 18" />
               <path d="m6 6 12 12" />
@@ -93,7 +98,7 @@ $usageNotesSections = is_array($appConfig['usageNotesSections']) ? $appConfig['u
             <span>選択解除</span>
           </button>
 
-          <button id="download-selected-button" class="download-selected-button" type="button" disabled>
+          <button id="download-selected-button" class="download-selected-button" type="button" disabled<?= $originalAccessEnabled ? '' : ' hidden' ?>>
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 3v12" />
               <path d="m7 10 5 5 5-5" />
@@ -102,7 +107,7 @@ $usageNotesSections = is_array($appConfig['usageNotesSections']) ? $appConfig['u
             <span>選択画像をまとめてダウンロード</span>
           </button>
 
-          <button id="slideshow-button" class="slideshow-button" type="button" aria-label="スライドショーを開始">
+          <button id="slideshow-button" class="slideshow-button" type="button" aria-label="スライドショーを開始"<?= $originalAccessEnabled ? '' : ' disabled' ?>>
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M8 5v14l11-7-11-7Z" />
             </svg>
@@ -129,6 +134,20 @@ $usageNotesSections = is_array($appConfig['usageNotesSections']) ? $appConfig['u
         <span></span>
       </div>
     </section>
+
+    <footer class="site-footer">
+      <?php if ($appConfig['footerText'] !== ''): ?>
+        <span><?= html_escape($appConfig['footerText']) ?></span>
+      <?php endif; ?>
+      <?php if ($appConfig['footerLinkText'] !== '' && $appConfig['footerLinkUrl'] !== ''): ?>
+        <a href="<?= html_escape($appConfig['footerLinkUrl']) ?>" target="_blank" rel="noopener noreferrer">
+          <?= html_escape($appConfig['footerLinkText']) ?>
+        </a>
+      <?php endif; ?>
+      <?php if ($appConfig['footerLicenseText'] !== ''): ?>
+        <span><?= html_escape($appConfig['footerLicenseText']) ?></span>
+      <?php endif; ?>
+    </footer>
   </main>
 
   <dialog id="preview-dialog" class="preview-dialog" aria-labelledby="preview-title">

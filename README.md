@@ -13,6 +13,7 @@
 - 選択画像の一括ZIPダウンロード
 - 利用上の注意の初回確認フロー
 - 管理モードでの個別削除、全削除、サムネイル診断
+- 管理モードで元画像表示・ダウンロードを一時停止する確認期間モード
 - 位置情報による閲覧制限と、閲覧パスワードによるバイパス
 - タイトル、ロゴ、OGP、表示文言を `config.php` で差し替え
 
@@ -79,7 +80,9 @@ http://127.0.0.1:8000/
 /?admin=your-admin-password
 ```
 
-管理モードでは、写真ごとの削除、全削除、サムネイル診断、位置制限設定ができます。
+管理モードでは、写真ごとの削除、全削除、サムネイル診断、元画像公開設定、位置制限設定ができます。
+
+元画像公開設定の「元画像表示とダウンロードを有効にする」をOFFにすると、通常ページは確認期間用の低解像度表示になります。この状態では、一覧には「現在確認期間中のため高解像度データは閲覧できません」と表示され、選択操作、元画像ダウンロード、一括ZIPダウンロードは無効になります。サムネイルをクリックしたモーダル表示は利用できますが、モーダル内には「現在低解像度表示中」と表示されます。
 
 閲覧モード:
 
@@ -113,6 +116,7 @@ http://127.0.0.1:8000/
 - `APP_USAGE_NOTES_TITLE` / `APP_USAGE_NOTES_CONTACT_TEXT`: 利用上の注意のタイトルと削除連絡文
 - `APP_USAGE_NOTES_SECTIONS`: 利用上の注意全文を差し替える配列
 - `APP_SLIDESHOW_TITLE`: スライドショーのタイトル
+- `APP_FOOTER_TEXT` / `APP_FOOTER_LINK_TEXT` / `APP_FOOTER_LINK_URL` / `APP_FOOTER_LICENSE_TEXT`: フッターの説明、リンク、ライセンス表記
 
 ### アップロード
 
@@ -141,6 +145,7 @@ http://127.0.0.1:8000/
 - `DOWNLOAD_ZIP_MAX_BYTES`: 一括ZIPダウンロード対象の合計最大サイズ
 - `DOWNLOAD_ZIP_COMMAND`: `ZipArchive` が使えない場合に利用する `zip` コマンド名またはパス
 - `DOWNLOAD_ZIP_DEBUG`: ZIP作成失敗時に詳細エラーを表示するか
+- `ORIGINAL_IMAGE_ACCESS_ENABLED`: 元画像表示とダウンロードの初期状態。管理モードで保存した値が優先されます
 
 ### 管理・閲覧
 
@@ -151,7 +156,25 @@ http://127.0.0.1:8000/
 
 ### 位置制限
 
-位置制限は管理モードの「位置制限設定」から有効化・保存できます。設定は `api/location-settings.json` に保存され、このファイルはGit管理外です。
+元画像公開設定と位置制限設定は `api/admin_settings.json` に保存され、このファイルはGit管理外です。
+
+`api/admin_settings.json` の例:
+
+```json
+{
+  "originalAccess": {
+    "enabled": false
+  },
+  "location": {
+    "enabled": false,
+    "lat": 0,
+    "lng": 0,
+    "radiusMeters": 1000
+  }
+}
+```
+
+位置制限は管理モードの「位置制限設定」から有効化・保存できます。
 
 初期値をコード側で指定したい場合は、`config.php` に以下を定義できます。
 
@@ -169,7 +192,7 @@ define('LOCATION_RADIUS_METERS', 1000);
 - 元画像: `UPLOAD_DIR`
 - サムネイル: `UPLOAD_DIR/thumbnails`
 - 撮影日時などのメタデータ: `UPLOAD_DIR/.metadata`
-- 位置制限設定: `api/location-settings.json`
+- 管理画面で保存する設定: `api/admin_settings.json`
 
 アップロード画像は再エンコードせず、元ファイルのまま保存します。撮影日時を取得できた場合のみ、ギャラリーの並び替え用データとして保存します。
 
@@ -177,6 +200,7 @@ define('LOCATION_RADIUS_METERS', 1000);
 
 - `config.php` はデプロイ先で個別に作成してください。
 - `UPLOAD_DIR` はPHP実行ユーザが書き込める必要があります。
+- `api/admin_settings.json` を管理画面から保存するには、PHP実行ユーザが `api/` に書き込める必要があります。
 - Web公開ディレクトリ外に `UPLOAD_DIR` を置いた場合も、画像は `api/image.php` 経由で表示されます。
 - Apacheでは `api/.htaccess` がJSON設定ファイルへの直接アクセスを拒否します。
 - NginxなどApache以外では、`api/*.json` への直接アクセスをWebサーバ側で拒否してください。

@@ -16,7 +16,8 @@ $maxLimit = max(1, config_int('GALLERY_MAX_LIMIT', 120));
 $limit = max(1, min($maxLimit, (int) (isset($_GET['limit']) ? $_GET['limit'] : $defaultLimit)));
 $pollIntervalSeconds = max(2, config_int('GALLERY_POLL_INTERVAL_SECONDS', 10));
 
-$photos = photo_entries();
+$originalAccessEnabled = original_image_access_enabled();
+$photos = photo_entries($originalAccessEnabled);
 
 function compare_timestamps($leftTimestamp, $rightTimestamp, $direction)
 {
@@ -78,5 +79,6 @@ json_response(200, [
     'total' => $total,
     'hasMore' => $offset + count($slice) < $total,
     'pollIntervalMs' => $pollIntervalSeconds * 1000,
+    'originalAccessEnabled' => $originalAccessEnabled,
     'photos' => $slice,
 ]);

@@ -12,8 +12,8 @@ define('APP_PAGE_TITLE', 'Photo Sharing');
 define('APP_DESCRIPTION', 'イベントやワークショップで写真をすばやく共有するためのシンプルなアップロードページです。');
 define('APP_OG_TITLE', 'Photo Sharing');
 define('APP_OG_DESCRIPTION', 'スマホから写真を選ぶだけで、同じページのギャラリーへ共有できます。');
-define('APP_OG_IMAGE', 'assets/images/ogp.png');
-define('APP_LOGO_SRC', 'assets/images/logo.svg');
+define('APP_OG_IMAGE', 'assets/images/ogp.sample.png');
+define('APP_LOGO_SRC', 'assets/images/logo.sample.svg');
 define('APP_LOGO_ALT', '');
 define('APP_UPLOAD_TAGLINE', '写真をみんなでシェアしよう。');
 define('APP_UPLOAD_ARIA_LABEL', '写真共有');
@@ -24,6 +24,10 @@ define('APP_USAGE_NOTES_STORAGE_KEY', 'photo-sharing-usage-notes-confirmed');
 define('APP_USAGE_NOTES_CONTACT_TEXT', '権利者本人からの申し出、または運営判断により、画像を削除する場合があります。削除の申し出は運営までご連絡ください。');
 define('APP_SLIDESHOW_EYEBROW', 'Slideshow');
 define('APP_SLIDESHOW_TITLE', '写真ギャラリー');
+define('APP_FOOTER_TEXT', 'Powered by Photo Sharing');
+define('APP_FOOTER_LINK_TEXT', 'ia-tmu/photoshare');
+define('APP_FOOTER_LINK_URL', 'https://github.com/ia-tmu/photoshare');
+define('APP_FOOTER_LICENSE_TEXT', 'MIT License');
 
 // To replace all usage-note sections, define APP_USAGE_NOTES_SECTIONS as an array.
 // define('APP_USAGE_NOTES_SECTIONS', [
@@ -51,6 +55,7 @@ define('DOWNLOAD_ZIP_MAX_FILES', 200);
 define('DOWNLOAD_ZIP_MAX_BYTES', 500 * 1024 * 1024);
 define('DOWNLOAD_ZIP_COMMAND', 'zip');
 define('DOWNLOAD_ZIP_DEBUG', false);
+define('ORIGINAL_IMAGE_ACCESS_ENABLED', true);
 
 // Admin mode. Set a non-empty password to enable deletion via ?admin=password.
 define('ADMIN_PASSWORD', getenv('ADMIN_PASSWORD') ?: '');

@@ -717,6 +717,31 @@ a {
   padding: 0 clamp(16px, 3vw, 40px) 56px;
 }
 
+.site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 14px;
+  width: min(1680px, 100%);
+  margin: 0 auto;
+  padding: 0 clamp(16px, 3vw, 40px) 36px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.site-footer a {
+  color: var(--foreground);
+  font-weight: 700;
+  text-decoration-thickness: 1px;
+}
+
+.site-footer a:hover {
+  text-decoration-thickness: 2px;
+}
+
 .gallery-header {
   position: fixed;
   top: 0;
@@ -752,6 +777,18 @@ a {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.original-access-notice {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.original-access-notice[hidden] {
+  display: none;
 }
 
 .sort-control {
@@ -896,6 +933,14 @@ a {
   font-size: 0.88rem;
   cursor: pointer;
   user-select: none;
+}
+
+.admin-location-note {
+  max-width: 760px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.55;
 }
 
 .admin-location-inputs {
@@ -1073,6 +1118,10 @@ a {
     transform 160ms ease;
 }
 
+.photo-zoom-button:disabled {
+  cursor: default;
+}
+
 .photo-zoom-button:hover,
 .photo-zoom-button:focus-visible {
   transform: translateY(-1px);
@@ -1083,6 +1132,15 @@ a {
 
 .photo-zoom-button:active {
   transform: scale(0.985);
+}
+
+.photo-zoom-button:disabled:hover,
+.photo-zoom-button:disabled:focus-visible,
+.photo-zoom-button:disabled:active {
+  box-shadow:
+    0 14px 28px rgba(17, 17, 17, 0.12),
+    0 2px 6px rgba(17, 17, 17, 0.08);
+  transform: none;
 }
 
 .photo-select-control {
@@ -1194,12 +1252,12 @@ a {
   opacity: 1;
 }
 
-.photo-zoom-button:hover .photo-frame.is-loaded img,
-.photo-zoom-button:focus-visible .photo-frame.is-loaded img {
+.photo-zoom-button:not(:disabled):hover .photo-frame.is-loaded img,
+.photo-zoom-button:not(:disabled):focus-visible .photo-frame.is-loaded img {
   transform: scale(1.04);
 }
 
-.photo-zoom-button:active .photo-frame.is-loaded img {
+.photo-zoom-button:not(:disabled):active .photo-frame.is-loaded img {
   transform: scale(0.99);
 }
 
@@ -1377,6 +1435,11 @@ a {
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 2;
+}
+
+.photo-lightbox-download.is-low-resolution {
+  cursor: default;
+  opacity: 0.92;
 }
 
 .photo-lightbox-nav {

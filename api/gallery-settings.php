@@ -12,5 +12,6 @@ json_response(200, [
     'ok' => true,
     'appConfig' => app_public_config(),
     'locationConfig' => get_location_settings(),
+    'originalAccessConfig' => get_original_access_settings(),
     'downloadZipMaxFiles' => max(1, config_int('DOWNLOAD_ZIP_MAX_FILES', 200)),
 ]);
