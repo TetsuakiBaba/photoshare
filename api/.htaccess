@@ -1,0 +1,4 @@
+# Deny direct HTTP access to JSON settings files.
+<FilesMatch "\.json$">
+    Require all denied
+</FilesMatch>

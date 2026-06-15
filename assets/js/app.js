@@ -13,14 +13,27 @@ const uploadStatus = document.querySelector("#upload-status");
 const galleryScrollButton = document.querySelector("#gallery-scroll-button");
 const gallerySection = document.querySelector("#gallery-section");
 const galleryHeader = document.querySelector(".gallery-header");
+const licenseInfoButton = document.querySelector("#license-info-button");
+const licenseDialog = document.querySelector("#license-dialog");
+const licenseCloseButton = document.querySelector("#license-close-button");
+const licenseConfirmButton = document.querySelector("#license-confirm-button");
 
 const selectedPhotos = new Map();
+const selectedThumbnails = new Map();
 const previewUrls = new Map();
 let previewCloseTimer = null;
 let shouldResetPreviewAfterClose = false;
 let uploadStatusTypeTimer = null;
+let licenseCloseTimer = null;
+let shouldOpenPhotoPickerAfterLicense = false;
+let hasConfirmedUsageNotesInSession = false;
+let heicLibraryPromise = null;
 
 const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+const photoShareConfig = window.photoShareConfig || {};
+const usageNotesStorageKey = photoShareConfig.usageNotesStorageKey || "photo-sharing-usage-notes-confirmed";
+const pageParams = new URLSearchParams(window.location.search);
+const shouldDebugFirstVisit = pageParams.get("debug_first_visit") === "1";
 
 const updateGalleryHeaderVisibility = () => {
   const galleryTop = gallerySection.getBoundingClientRect().top;
@@ -56,6 +69,11 @@ const formatCount = (count) => `${count}枚`;
 const photoKey = (file) => `${file.name}-${file.size}-${file.lastModified}`;
 const supportedPhotoExtensions = new Set(["jpg", "jpeg", "png", "gif", "webp", "heic", "heif"]);
 const supportedPhotoMimeTypes = new Set(["image/jpeg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif"]);
+const heicPhotoExtensions = new Set(["heic", "heif"]);
+const heicPhotoMimeTypes = new Set(["image/heic", "image/heif"]);
+const thumbnailMaxWidth = 512;
+const thumbnailMaxHeight = 512;
+const thumbnailJpegQuality = 0.72;
 
 const isSupportedPhotoFile = (file) => {
   if (supportedPhotoMimeTypes.has(file.type)) {
@@ -64,6 +82,15 @@ const isSupportedPhotoFile = (file) => {
 
   const extension = file.name.split(".").pop()?.toLowerCase();
   return extension ? supportedPhotoExtensions.has(extension) : false;
+};
+
+const isHeicPhotoFile = (file) => {
+  if (heicPhotoMimeTypes.has(file.type)) {
+    return true;
+  }
+
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  return extension ? heicPhotoExtensions.has(extension) : false;
 };
 
 const setUploadStatus = (message = "", type = "") => {
@@ -105,8 +132,110 @@ const clearSelectedPhotos = () => {
   }
 
   selectedPhotos.clear();
+  selectedThumbnails.clear();
   photoInput.value = "";
   renderPreviews();
+};
+
+const loadImageFromBlob = (blob) =>
+  new Promise((resolve, reject) => {
+    const image = new Image();
+    const url = URL.createObjectURL(blob);
+
+    image.addEventListener("load", () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    }, { once: true });
+
+    image.addEventListener("error", () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("画像を読み込めませんでした。"));
+    }, { once: true });
+
+    image.src = url;
+  });
+
+const blobFromCanvas = (canvas, type, quality) =>
+  new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error("サムネイルを作成できませんでした。"));
+        return;
+      }
+
+      resolve(blob);
+    }, type, quality);
+  });
+
+const loadHeicLibrary = () => {
+  if (window.HeicTo) {
+    return Promise.resolve(window.HeicTo);
+  }
+
+  if (heicLibraryPromise) {
+    return heicLibraryPromise;
+  }
+
+  heicLibraryPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "assets/vendor/heic-to/heic-to.js";
+    script.async = true;
+
+    script.addEventListener("load", () => {
+      if (window.HeicTo) {
+        resolve(window.HeicTo);
+        return;
+      }
+
+      reject(new Error("HEIC変換ライブラリを読み込めませんでした。"));
+    }, { once: true });
+
+    script.addEventListener("error", () => {
+      reject(new Error("HEIC変換ライブラリを読み込めませんでした。"));
+    }, { once: true });
+
+    document.head.append(script);
+  });
+
+  return heicLibraryPromise;
+};
+
+const convertHeicToJpeg = async (file) => {
+  const heicTo = await loadHeicLibrary();
+
+  const convert = typeof heicTo === "function" ? heicTo : heicTo.heicTo;
+  if (typeof convert !== "function") {
+    throw new Error("HEIC変換ライブラリを実行できませんでした。");
+  }
+
+  return convert({
+    blob: file,
+    type: "image/jpeg",
+    quality: 0.9,
+  });
+};
+
+const createThumbnailBlob = async (file) => {
+  const sourceBlob = isHeicPhotoFile(file) ? await convertHeicToJpeg(file) : file;
+  const image = await loadImageFromBlob(sourceBlob);
+
+  const scale = Math.min(thumbnailMaxWidth / image.naturalWidth, thumbnailMaxHeight / image.naturalHeight, 1);
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("サムネイル描画に対応していないブラウザです。");
+  }
+
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, width, height);
+  context.drawImage(image, 0, 0, width, height);
+
+  return blobFromCanvas(canvas, "image/jpeg", thumbnailJpegQuality);
 };
 
 const resetPreviewDialogContent = () => {
@@ -168,6 +297,86 @@ const openPreviewDialog = () => {
   });
 };
 
+const hasConfirmedUsageNotes = () => {
+  if (hasConfirmedUsageNotesInSession) {
+    return true;
+  }
+
+  if (shouldDebugFirstVisit) {
+    return false;
+  }
+
+  try {
+    return window.localStorage.getItem(usageNotesStorageKey) === "1";
+  } catch {
+    return false;
+  }
+};
+
+const confirmUsageNotes = () => {
+  hasConfirmedUsageNotesInSession = true;
+
+  try {
+    window.localStorage.setItem(usageNotesStorageKey, "1");
+  } catch {
+    // Continue for this click even if storage is unavailable.
+  }
+};
+
+const closeLicenseDialog = ({ immediate = false, returnFocus = true } = {}) => {
+  if (!licenseDialog.open) return;
+  if (licenseDialog.classList.contains("is-closing")) return;
+
+  window.clearTimeout(licenseCloseTimer);
+  licenseDialog.classList.remove("is-open");
+  licenseDialog.classList.add("is-closing");
+
+  const finishClose = () => {
+    licenseDialog.classList.remove("is-closing");
+    licenseDialog.close();
+    if (returnFocus) {
+      licenseInfoButton.focus();
+    }
+  };
+
+  if (immediate || prefersReducedMotion.matches) {
+    finishClose();
+    return;
+  }
+
+  licenseCloseTimer = window.setTimeout(finishClose, 180);
+};
+
+const openLicenseDialog = ({ focusConfirm = false } = {}) => {
+  window.clearTimeout(licenseCloseTimer);
+  licenseDialog.classList.remove("is-open", "is-closing");
+
+  if (!licenseDialog.open) {
+    licenseDialog.showModal();
+  }
+
+  window.requestAnimationFrame(() => {
+    licenseDialog.classList.add("is-open");
+  });
+
+  if (focusConfirm) {
+    licenseConfirmButton.focus();
+    return;
+  }
+
+  licenseCloseButton.focus();
+};
+
+const requestPhotoSelection = () => {
+  if (hasConfirmedUsageNotes()) {
+    photoInput.click();
+    return;
+  }
+
+  shouldOpenPhotoPickerAfterLicense = true;
+  openLicenseDialog({ focusConfirm: true });
+};
+
 const renderPreviews = () => {
   const count = selectedPhotos.size;
 
@@ -182,7 +391,7 @@ const renderPreviews = () => {
   for (const [key, file] of selectedPhotos.entries()) {
     let previewUrl = previewUrls.get(key);
     if (!previewUrl) {
-      previewUrl = URL.createObjectURL(file);
+      previewUrl = URL.createObjectURL(selectedThumbnails.get(key) || file);
       previewUrls.set(key, previewUrl);
     }
 
@@ -200,6 +409,7 @@ const renderPreviews = () => {
     removeButton.textContent = "×";
     removeButton.addEventListener("click", () => {
       selectedPhotos.delete(key);
+      selectedThumbnails.delete(key);
       revokePreviewUrl(key);
       renderPreviews();
     });
@@ -214,7 +424,7 @@ const renderPreviews = () => {
   openPreviewDialog();
 };
 
-const addPhotos = (fileList) => {
+const addPhotos = async (fileList) => {
   const files = Array.from(fileList).filter(isSupportedPhotoFile);
   if (files.length === 0) {
     setUploadStatus("JPEG、PNG、GIF、WebP、HEICの写真を選択してください。", "error");
@@ -226,8 +436,44 @@ const addPhotos = (fileList) => {
   setProgress(0);
   setProgressBarActive(false);
 
+  uploadButton.disabled = true;
+  sendButton.disabled = true;
+  clearButton.disabled = true;
+  selectMoreButton.disabled = true;
+  setUploadStatus("サムネイルを作成しています...");
+
+  let addedCount = 0;
+  let failedCount = 0;
+
   for (const file of files) {
-    selectedPhotos.set(photoKey(file), file);
+    const key = photoKey(file);
+    try {
+      const thumbnail = await createThumbnailBlob(file);
+      selectedPhotos.set(key, file);
+      selectedThumbnails.set(key, thumbnail);
+      revokePreviewUrl(key);
+      addedCount += 1;
+    } catch (_error) {
+      failedCount += 1;
+      selectedPhotos.delete(key);
+      selectedThumbnails.delete(key);
+      revokePreviewUrl(key);
+    }
+  }
+
+  uploadButton.disabled = false;
+  clearButton.disabled = false;
+  selectMoreButton.disabled = false;
+
+  if (failedCount > 0) {
+    setUploadStatus(`${failedCount}枚はサムネイルを作成できなかったため除外しました。`, "error");
+  } else {
+    setUploadStatus();
+  }
+
+  if (addedCount === 0) {
+    renderPreviews();
+    return;
   }
 
   renderPreviews();
@@ -238,7 +484,15 @@ const uploadPhotos = (files) =>
     const formData = new FormData();
 
     for (const file of files) {
+      const key = photoKey(file);
       formData.append("photos[]", file);
+      formData.append("photoKeys[]", key);
+
+      const thumbnail = selectedThumbnails.get(key);
+      if (thumbnail) {
+        formData.append("thumbnails[]", thumbnail, `${key}.jpg`);
+        formData.append("thumbnailKeys[]", key);
+      }
     }
 
     const request = new XMLHttpRequest();
@@ -284,11 +538,11 @@ const sendSelectedPhotos = async () => {
   setProgressBarActive(true);
 
   try {
-    await uploadPhotos(files);
+    const result = await uploadPhotos(files);
     setProgress(100);
     uploadButton.classList.remove("is-uploading");
     uploadButton.classList.add("is-success");
-    setUploadStatus("写真が送信されました", "success");
+    setUploadStatus(result.successMessage || "写真が送信されました", "success");
     clearSelectedPhotos();
 
     window.setTimeout(() => {
@@ -317,15 +571,54 @@ const sendSelectedPhotos = async () => {
 };
 
 uploadButton.addEventListener("click", () => {
-  photoInput.click();
+  requestPhotoSelection();
 });
 
 selectMoreButton.addEventListener("click", () => {
-  photoInput.click();
+  requestPhotoSelection();
 });
 
 clearButton.addEventListener("click", () => {
   clearSelectedPhotos();
+});
+
+licenseInfoButton.addEventListener("click", () => {
+  shouldOpenPhotoPickerAfterLicense = false;
+  openLicenseDialog();
+});
+
+licenseCloseButton.addEventListener("click", () => {
+  shouldOpenPhotoPickerAfterLicense = false;
+  closeLicenseDialog();
+});
+
+licenseDialog.addEventListener("click", (event) => {
+  if (event.target === licenseDialog) {
+    shouldOpenPhotoPickerAfterLicense = false;
+    closeLicenseDialog();
+  }
+});
+
+licenseDialog.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  shouldOpenPhotoPickerAfterLicense = false;
+  closeLicenseDialog();
+});
+
+licenseDialog.addEventListener("close", () => {
+  window.clearTimeout(licenseCloseTimer);
+  licenseDialog.classList.remove("is-open", "is-closing");
+});
+
+licenseConfirmButton.addEventListener("click", () => {
+  const shouldOpenPhotoPicker = shouldOpenPhotoPickerAfterLicense;
+  shouldOpenPhotoPickerAfterLicense = false;
+  confirmUsageNotes();
+  closeLicenseDialog({ immediate: shouldOpenPhotoPicker, returnFocus: !shouldOpenPhotoPicker });
+
+  if (shouldOpenPhotoPicker) {
+    photoInput.click();
+  }
 });
 
 sendButton.addEventListener("click", () => {

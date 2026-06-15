@@ -36,6 +36,7 @@ if (!is_file($path)) {
 header('Content-Type: ' . image_mime_type($path));
 header('Content-Length: ' . (string) filesize($path));
 header('Cache-Control: public, max-age=31536000, immutable');
+send_noindex_header();
 header('X-Content-Type-Options: nosniff');
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     readfile($path);

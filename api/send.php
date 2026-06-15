@@ -4,7 +4,7 @@ require __DIR__ . '/bootstrap.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-function normalize_uploads(array $files)
+function normalize_uploads(array $files, array $keys = [])
 {
     if (!isset($files['name']) || !is_array($files['name'])) {
         return [];
@@ -23,10 +23,36 @@ function normalize_uploads(array $files)
             'tmp_name' => (string) (isset($files['tmp_name'][$index]) ? $files['tmp_name'][$index] : ''),
             'error' => (int) (isset($files['error'][$index]) ? $files['error'][$index] : UPLOAD_ERR_NO_FILE),
             'size' => (int) (isset($files['size'][$index]) ? $files['size'][$index] : 0),
+            'key' => (string) (isset($keys[$index]) ? $keys[$index] : ''),
         ];
     }
 
     return $normalized;
+}
+
+function normalize_post_array($value)
+{
+    if (!is_array($value)) {
+        return [];
+    }
+
+    return array_values(array_map('strval', $value));
+}
+
+function normalize_thumbnail_uploads(array $files, array $keys = [])
+{
+    $uploads = normalize_uploads($files, $keys);
+    $mapped = [];
+
+    foreach ($uploads as $upload) {
+        if ($upload['key'] === '') {
+            continue;
+        }
+
+        $mapped[$upload['key']] = $upload;
+    }
+
+    return $mapped;
 }
 
 function ensure_upload_dir()
@@ -98,7 +124,33 @@ function store_uploaded_image($sourcePath, $targetPath)
     return is_file($targetPath) && filesize($targetPath) > 0;
 }
 
-function save_uploads(array $uploads)
+function store_client_thumbnail(array $thumbnail, $originalName)
+{
+    if ($thumbnail['error'] !== UPLOAD_ERR_OK) {
+        return false;
+    }
+
+    if ($thumbnail['size'] <= 0 || $thumbnail['size'] > 5 * 1024 * 1024) {
+        return false;
+    }
+
+    if (!is_uploaded_file($thumbnail['tmp_name'])) {
+        return false;
+    }
+
+    $mime = image_mime_type($thumbnail['tmp_name'], $thumbnail['name']);
+    if ($mime !== 'image/jpeg') {
+        return false;
+    }
+
+    if (!ensure_thumbnail_dir()) {
+        return false;
+    }
+
+    return store_uploaded_image($thumbnail['tmp_name'], thumbnail_path($originalName));
+}
+
+function save_uploads(array $uploads, array $thumbnailsByKey = [])
 {
     $maxCount = config_int('MAX_UPLOAD_COUNT', 20);
     $maxSize = config_int('MAX_IMAGE_SIZE', 25 * 1024 * 1024);
@@ -145,7 +197,13 @@ function save_uploads(array $uploads)
             'capturedTimestamp' => $capturedTimestamp,
         ]);
 
-        $hasThumbnail = ensure_thumbnail_for($storedName);
+        $hasThumbnail = false;
+        if ($upload['key'] !== '' && isset($thumbnailsByKey[$upload['key']])) {
+            $hasThumbnail = store_client_thumbnail($thumbnailsByKey[$upload['key']], $storedName);
+        }
+        if (!$hasThumbnail) {
+            $hasThumbnail = ensure_thumbnail_for($storedName);
+        }
         $storedSize = is_file($targetPath) ? filesize($targetPath) : 0;
 
         $saved[] = [
@@ -166,7 +224,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     json_response(405, ['ok' => false, 'error' => 'POSTメソッドで送信してください。']);
 }
 
-$uploads = normalize_uploads(isset($_FILES['photos']) ? $_FILES['photos'] : []);
+$photoKeys = normalize_post_array(isset($_POST['photoKeys']) ? $_POST['photoKeys'] : []);
+$thumbnailKeys = normalize_post_array(isset($_POST['thumbnailKeys']) ? $_POST['thumbnailKeys'] : []);
+$uploads = normalize_uploads(isset($_FILES['photos']) ? $_FILES['photos'] : [], $photoKeys);
 if ($uploads === []) {
     $contentLength = isset($_SERVER['CONTENT_LENGTH']) ? (int) $_SERVER['CONTENT_LENGTH'] : 0;
     $postMaxSize = ini_bytes((string) ini_get('post_max_size'));
@@ -177,7 +237,8 @@ if ($uploads === []) {
     json_response(400, ['ok' => false, 'error' => '保存する写真を選択してください。']);
 }
 
-$savedFiles = save_uploads($uploads);
+$thumbnailsByKey = normalize_thumbnail_uploads(isset($_FILES['thumbnails']) ? $_FILES['thumbnails'] : [], $thumbnailKeys);
+$savedFiles = save_uploads($uploads, $thumbnailsByKey);
 
 json_response(200, [
     'ok' => true,
