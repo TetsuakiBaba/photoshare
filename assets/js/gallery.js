@@ -35,6 +35,7 @@ let pollTimer = null;
 let pollIntervalMs = DEFAULT_POLL_INTERVAL_MS;
 let downloadZipMaxFiles = 200;
 let originalImageAccessEnabled = true;
+let lastAppliedOriginalImageAccessEnabled = null;
 let slideshowPhotos = [];
 let slideshowIndex = 0;
 let slideshowAutoTimer = null;
@@ -84,6 +85,9 @@ const getOrderedLoadedPhotos = () =>
     .filter(Boolean);
 
 const updateOriginalAccessControls = () => {
+  const wasOriginalAccessEnabled = lastAppliedOriginalImageAccessEnabled;
+  const didDisableOriginalAccess = wasOriginalAccessEnabled === true && !originalImageAccessEnabled;
+
   galleryShell.classList.toggle("is-thumbnail-only", !originalImageAccessEnabled);
   if (originalAccessNotice) {
     originalAccessNotice.hidden = originalImageAccessEnabled;
@@ -95,8 +99,11 @@ const updateOriginalAccessControls = () => {
 
   if (!originalImageAccessEnabled) {
     selectedPhotoIds.clear();
-    if (slideshowDialog.open) closeSlideshow();
-    if (lightbox.dialog.open) closePhotoLightbox();
+    if (didDisableOriginalAccess && slideshowDialog.open) closeSlideshow();
+    if (lightbox.dialog.open && lightboxCurrentPhotoId) {
+      const photo = photoStore.get(lightboxCurrentPhotoId);
+      if (photo) renderPhotoLightbox(photo);
+    }
   }
 
   grid.querySelectorAll(".photo-select-control").forEach((control) => {
@@ -121,6 +128,7 @@ const updateOriginalAccessControls = () => {
   syncVisibleSelectionControls();
   updateDownloadSelectedButton();
   updateSelectionLimitControls();
+  lastAppliedOriginalImageAccessEnabled = originalImageAccessEnabled;
 };
 
 const updateDownloadSelectedButton = () => {
